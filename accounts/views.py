@@ -8,6 +8,8 @@ from core.mongo import users_collection
 from core.schema.User_Schema import UserSchema
 from django.conf import settings
 from pymongo.errors import DuplicateKeyError
+from .utils import JsonResponse, jwt_required
+from bson import ObjectId
 
 JWT_SECRET = settings.JWT_SECRET
 PEPPER = settings.PEPPER
@@ -79,3 +81,15 @@ def login(request):
             token = token.decode("utf-8")
 
         return JsonResponse({"token": token}, status=200)
+
+@csrf_exempt
+@jwt_required
+def delete_account(request):
+    if request.method == "DELETE":
+        result = users_collection.delete_one({"_id": ObjectId(request.user_id)})
+        if result.deleted_count == 0:
+            return JsonResponse({"error": "User not found"}, status=404)
+        return JsonResponse({"message": "Account deleted successfully"}, status=200)
+    else:
+        return JsonResponse({"error": "Method not allowed"}, status=405)
+        
