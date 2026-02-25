@@ -5,7 +5,7 @@ from pymongo import MongoClient, ASCENDING
 load_dotenv()
 
 client = MongoClient(os.getenv("MONGO_URI"))
-db = client("inotebook_db")
+db = client["inotebook_db"]
 
 users_collection = db["users"]
 notes_collection = db["notes"]

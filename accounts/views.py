@@ -1,6 +1,6 @@
 import json
 import jwt
-from datetime import datetime
+from datetime import datetime, timedelta
 import bcrypt
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
@@ -70,9 +70,12 @@ def login(request):
 
         payload = {
             "user_id": str(user["_id"]),
-            "exp": datetime.utcnow() + datetime.timedelta(days=1)
+            "exp": datetime.utcnow() + timedelta(days=1)
         }
 
         token = jwt.encode(payload, JWT_SECRET, algorithm="HS256")
 
-        return JsonResponse({"token": token})
+        if isinstance(token, bytes):
+            token = token.decode("utf-8")
+
+        return JsonResponse({"token": token}, status=200)
