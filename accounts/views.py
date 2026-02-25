@@ -17,79 +17,140 @@ PEPPER = settings.PEPPER
 @csrf_exempt
 def signup(request):
     if request.method == "POST":
-        data = json.loads(request.body)
-
-        # Get user data from body
-        username = data.get("username")
-        email = data.get("email")
-        password = data.get("password")
-
-        password_to_hashed = password + PEPPER
-
-        if not username or not email or not password:
-            return JsonResponse({"error": "All fields are required"}, status=400)
-
-        if users_collection.find_one({"email": email}):
-            return JsonResponse({"error": "Email already exists"}, status=400)
-
-        hashed_password = bcrypt.hashpw(password_to_hashed.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
-
-        # Create user object
-        user = UserSchema(
-            username=username,
-            email=email,
-            password=hashed_password,
-            created_at=datetime.utcnow(),
-            updated_at=datetime.utcnow()
-        )
-
-        # Insert into Mongo
         try:
-            users_collection.insert_one(user.dict())
-        except DuplicateKeyError:
-            return JsonResponse({"error": "Email already exists"}, status=400)
+            data = json.loads(request.body)
 
-        return JsonResponse({"message": "User created successfully"})
+            # Get user data from body
+            username = data.get("username")
+            email = data.get("email")
+            password = data.get("password")
+
+            password_to_hashed = password + PEPPER
+
+            if not username or not email or not password:
+                return JsonResponse({"error": "All fields are required"}, status=400)
+
+            if users_collection.find_one({"email": email}):
+                return JsonResponse({"error": "Email already exists"}, status=400)
+
+            hashed_password = bcrypt.hashpw(password_to_hashed.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
+
+            # Create user object
+            user = UserSchema(
+                username=username,
+                email=email,
+                password=hashed_password,
+                created_at=datetime.utcnow(),
+                updated_at=datetime.utcnow()
+            )
+
+            # Insert into Mongo
+            try:
+                users_collection.insert_one(user.dict())
+            except DuplicateKeyError:
+                return JsonResponse({"error": "Email already exists"}, status=400)
+
+            return JsonResponse({"message": "User created successfully"})
+
+        except Exception as e:
+            return JsonResponse({"error": str(e)}, status=500)
 
 
 @csrf_exempt
 def login(request):
     if request.method == "POST":
-        data = json.loads(request.body)
+        try:
+            data = json.loads(request.body)
 
-        email = data.get("email")
-        password = data.get("password")
+            email = data.get("email")
+            password = data.get("password")
 
-        password_to_check = password + PEPPER
+            password_to_check = password + PEPPER
 
-        user = users_collection.find_one({"email": email})
+            user = users_collection.find_one({"email": email})
 
-        if not user:
-            return JsonResponse({"error": "Invalid credentials"}, status=400)
+            if not user:
+                return JsonResponse({"error": "Invalid credentials"}, status=400)
 
-        if not bcrypt.checkpw(password_to_check.encode("utf-8"), user["password"].encode("utf-8")):
-            return JsonResponse({"error": "Invalid credentials"}, status=400)
+            if not bcrypt.checkpw(password_to_check.encode("utf-8"), user["password"].encode("utf-8")):
+                return JsonResponse({"error": "Invalid credentials"}, status=400)
 
-        payload = {
-            "user_id": str(user["_id"]),
-            "exp": datetime.utcnow() + timedelta(days=1)
-        }
+            payload = {
+                "user_id": str(user["_id"]),
+                "iat": datetime.utcnow(),   # issued at
+                "exp": datetime.utcnow() + timedelta(days=1)
+            }
 
-        token = jwt.encode(payload, JWT_SECRET, algorithm="HS256")
+            token = jwt.encode(payload, JWT_SECRET, algorithm="HS256")
 
-        if isinstance(token, bytes):
-            token = token.decode("utf-8")
+            if isinstance(token, bytes):
+                token = token.decode("utf-8")
 
-        return JsonResponse({"token": token}, status=200)
+            return JsonResponse({"token": token}, status=200)
+
+        except Exception as e:
+            return JsonResponse({"error": str(e)}, status=500)
 
 @csrf_exempt
 @jwt_required
 def delete_account(request):
     if request.method == "DELETE":
-        result = users_collection.delete_one({"_id": ObjectId(request.user_id)})
-        if result.deleted_count == 0:
-            return JsonResponse({"error": "User not found"}, status=404)
-        return JsonResponse({"message": "Account deleted successfully"}, status=200)
-    else:
-        return JsonResponse({"error": "Method not allowed"}, status=405)
+        try:
+            result = users_collection.delete_one({"_id": ObjectId(request.user_id)})
+            if result.deleted_count == 0:
+                return JsonResponse({"error": "User not found"}, status=404)
+            return JsonResponse({"message": "Account deleted successfully"}, status=200)
+        except Exception as e:
+            return JsonResponse({"error": str(e)}, status=500)
         
+    return JsonResponse({"error": "Method not allowed"}, status=405)
+        
+@csrf_exempt
+@jwt_required
+def change_password(request):
+    if request.method == "POST":
+        try:
+            data = json.loads(request.body)
+        except json.JSONDecodeError:
+            return JsonResponse({"error": "Invalid JSON"}, status=400)
+
+        old_password = data.get("old_password")
+        new_password = data.get("new_password")
+
+        if not old_password or not new_password:
+            return JsonResponse({"error": "Both old and new password are required"}, status=400)
+
+        if old_password == new_password:
+            return JsonResponse({"error": "New password must be different"}, status=400)
+
+        # Get current user from JWT
+        user = users_collection.find_one({"_id": ObjectId(request.user_id)})
+
+        if not user:
+            return JsonResponse({"error": "User not found"}, status=404)
+        
+        # verify old password
+        old_password_with_pepper = old_password + PEPPER
+
+        if not bcrypt.checkpw(old_password_with_pepper.encode("utf-8"), user["password"].encode("utf-8")):
+            return JsonResponse({"error": "Old password is incorrect"}, status=400)
+
+        # Hash new password
+        new_password_with_pepper = new_password + PEPPER
+        hashed_new_password = bcrypt.hashpw(new_password_with_pepper.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
+
+        # Update Password in MongoDB
+        users_collection.update_one(
+            {"_id": ObjectId(request.user_id)},
+            {
+                "$set": {
+                    "password": hashed_new_password,
+                    "updated_at": datetime.utcnow(),
+                    "password_changed_at": datetime.utcnow()
+                }
+            } 
+        )
+
+        return JsonResponse({"message": "Password changed successfully"}, status=200)
+    
+    return JsonResponse({"error": "Method not allowed"}, status=405)
