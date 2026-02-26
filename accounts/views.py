@@ -121,7 +121,7 @@ def change_password(request):
             return JsonResponse({"error": "Both old and new password are required"}, status=400)
 
         if old_password == new_password:
-            return JsonResponse({"error": "New password must be different"}, status=400)
+            return JsonResponse({"error": "Password must be different"}, status=400)
 
         # Get current user from JWT
         user = users_collection.find_one({"_id": ObjectId(request.user_id)})
@@ -133,7 +133,7 @@ def change_password(request):
         old_password_with_pepper = old_password + PEPPER
 
         if not bcrypt.checkpw(old_password_with_pepper.encode("utf-8"), user["password"].encode("utf-8")):
-            return JsonResponse({"error": "Old password is incorrect"}, status=400)
+            return JsonResponse({"error": "Password is incorrect"}, status=400)
 
         # Hash new password
         new_password_with_pepper = new_password + PEPPER
