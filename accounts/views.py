@@ -8,7 +8,7 @@ from core.mongo import users_collection
 from core.schema.User_Schema import UserSchema
 from django.conf import settings
 from pymongo.errors import DuplicateKeyError
-from .utils import JsonResponse, jwt_required
+from .utils import jwt_required
 from bson import ObjectId
 
 JWT_SECRET = settings.JWT_SECRET
