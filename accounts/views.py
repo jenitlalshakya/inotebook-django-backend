@@ -28,10 +28,10 @@ def signup(request):
             password_to_hashed = password + PEPPER
 
             if not username or not email or not password:
-                return JsonResponse({"error": "All fields are required"}, status=400)
+                return JsonResponse({"success": False, "error": "All fields are required"}, status=400)
 
             if users_collection.find_one({"email": email}):
-                return JsonResponse({"error": "Email already exists"}, status=400)
+                return JsonResponse({"success": False, "error": "Email already exists"}, status=400)
 
             hashed_password = bcrypt.hashpw(password_to_hashed.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
 
@@ -48,12 +48,12 @@ def signup(request):
             try:
                 users_collection.insert_one(user.dict())
             except DuplicateKeyError:
-                return JsonResponse({"error": "Email already exists"}, status=400)
+                return JsonResponse({"success": False, "error": "Email already exists"}, status=400)
 
-            return JsonResponse({"message": "User created successfully"})
+            return JsonResponse({"success": True, "message": "User created successfully"})
 
         except Exception as e:
-            return JsonResponse({"error": str(e)}, status=500)
+            return JsonResponse({"success": False, "error": str(e)}, status=500)
 
 
 @csrf_exempt
@@ -70,10 +70,10 @@ def login(request):
             user = users_collection.find_one({"email": email})
 
             if not user:
-                return JsonResponse({"error": "Invalid credentials"}, status=400)
+                return JsonResponse({"success": False, "error": "Invalid credentials"}, status=400)
 
             if not bcrypt.checkpw(password_to_check.encode("utf-8"), user["password"].encode("utf-8")):
-                return JsonResponse({"error": "Invalid credentials"}, status=400)
+                return JsonResponse({"success": False, "error": "Invalid credentials"}, status=400)
 
             payload = {
                 "user_id": str(user["_id"]),
@@ -86,10 +86,10 @@ def login(request):
             if isinstance(token, bytes):
                 token = token.decode("utf-8")
 
-            return JsonResponse({"token": token}, status=200)
+            return JsonResponse({"success": True, "token": token}, status=200)
 
         except Exception as e:
-            return JsonResponse({"error": str(e)}, status=500)
+            return JsonResponse({"success": False, "error": str(e)}, status=500)
 
 @csrf_exempt
 @jwt_required
@@ -98,12 +98,12 @@ def delete_account(request):
         try:
             result = users_collection.delete_one({"_id": ObjectId(request.user_id)})
             if result.deleted_count == 0:
-                return JsonResponse({"error": "User not found"}, status=404)
-            return JsonResponse({"message": "Account deleted successfully"}, status=200)
+                return JsonResponse({"success": False, "error": "User not found"}, status=404)
+            return JsonResponse({"success": True, "message": "Account deleted successfully"}, status=200)
         except Exception as e:
-            return JsonResponse({"error": str(e)}, status=500)
+            return JsonResponse({"success": False, "error": str(e)}, status=500)
         
-    return JsonResponse({"error": "Method not allowed"}, status=405)
+    return JsonResponse({"success": False, "error": "Method not allowed"}, status=405)
         
 @csrf_exempt
 @jwt_required
@@ -112,28 +112,28 @@ def change_password(request):
         try:
             data = json.loads(request.body)
         except json.JSONDecodeError:
-            return JsonResponse({"error": "Invalid JSON"}, status=400)
+            return JsonResponse({"success": False, "error": "Invalid JSON"}, status=400)
 
         old_password = data.get("old_password")
         new_password = data.get("new_password")
 
         if not old_password or not new_password:
-            return JsonResponse({"error": "Both old and new password are required"}, status=400)
+            return JsonResponse({"success": False, "error": "Both old and new password are required"}, status=400)
 
         if old_password == new_password:
-            return JsonResponse({"error": "Password must be different"}, status=400)
+            return JsonResponse({"success": False, "error": "Password must be different"}, status=400)
 
         # Get current user from JWT
         user = users_collection.find_one({"_id": ObjectId(request.user_id)})
 
         if not user:
-            return JsonResponse({"error": "User not found"}, status=404)
+            return JsonResponse({"success": False, "error": "User not found"}, status=404)
         
         # verify old password
         old_password_with_pepper = old_password + PEPPER
 
         if not bcrypt.checkpw(old_password_with_pepper.encode("utf-8"), user["password"].encode("utf-8")):
-            return JsonResponse({"error": "Password is incorrect"}, status=400)
+            return JsonResponse({"success": False, "error": "Password is incorrect"}, status=400)
 
         # Hash new password
         new_password_with_pepper = new_password + PEPPER
@@ -151,6 +151,6 @@ def change_password(request):
             } 
         )
 
-        return JsonResponse({"message": "Password changed successfully"}, status=200)
+        return JsonResponse({"success": True, "message": "Password changed successfully"}, status=200)
     
-    return JsonResponse({"error": "Method not allowed"}, status=405)
+    return JsonResponse({"success": False, "error": "Method not allowed"}, status=405)
