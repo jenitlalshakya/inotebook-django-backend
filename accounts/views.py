@@ -21,13 +21,13 @@ def signup(request):
             data = json.loads(request.body)
 
             # Get user data from body
-            username = data.get("username")
-            email = data.get("email")
+            name = data.get("name")
+            email = data.get("email", "").strip().lower()
             password = data.get("password")
 
             password_to_hashed = password + PEPPER
 
-            if not username or not email or not password:
+            if not name or not email or not password:
                 return JsonResponse({"success": False, "error": "All fields are required"}, status=400)
 
             if users_collection.find_one({"email": email}):
@@ -37,7 +37,7 @@ def signup(request):
 
             # Create user object
             user = UserSchema(
-                username=username,
+                name=name,
                 email=email,
                 password=hashed_password,
                 created_at=datetime.utcnow(),
@@ -62,7 +62,7 @@ def login(request):
         try:
             data = json.loads(request.body)
 
-            email = data.get("email")
+            email = data.get("email", "").strip().lower()
             password = data.get("password")
 
             password_to_check = password + PEPPER
