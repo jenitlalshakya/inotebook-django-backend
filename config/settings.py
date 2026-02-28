@@ -28,7 +28,7 @@ JWT_SECRET = os.getenv("JWT_SECRET")
 PEPPER = os.getenv("PASSWORD_PEPPER")
 ENCRYPTION_KEY = os.getenv("ENCRYPTION_KEY")
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+DEBUG = False
 
 ALLOWED_HOSTS = os.getenv("ALLOWED_HOSTS", "127.0.0.1,localhost").split(",")
 
