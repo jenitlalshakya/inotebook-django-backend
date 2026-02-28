@@ -86,7 +86,9 @@ def login(request):
             if isinstance(token, bytes):
                 token = token.decode("utf-8")
 
-            return JsonResponse({"success": True, "token": token}, status=200)
+            name = user.get("name", "")
+
+            return JsonResponse({"success": True, "token": token, "name": name}, status=200)
 
         except Exception as e:
             return JsonResponse({"success": False, "error": str(e)}, status=500)
