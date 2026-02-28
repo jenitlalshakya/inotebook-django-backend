@@ -14,8 +14,11 @@ def create_note(request):
         return JsonResponse({"success": False, "error": "POST method required"}, status=405)
 
     try:
-        data = json.loads(request.body)
-
+        try:
+            data = json.loads(request.body)
+        except json.JSONDecodeError:
+            return JsonResponse({"success": False, "error": "Invalid JSON body"}, status=400)
+            
         # Validate input
         validated = NoteSchema(**data)
 
@@ -42,7 +45,15 @@ def get_notes(request):
         return JsonResponse({"success": False, "error": "GET method required"}, status=405)
 
     try:
-        notes = notes_collection.find({"user_id": ObjectId(request.user_id)}).sort("updated_at", -1)
+        try:
+            limit = min(max(int(request.GET.get("limit", 20)), 1), 100)
+            skip = max(int(request.GET.get("skip", 0)), 0)
+        except ValueError:
+            return JsonResponse({"success": False, "error": "Invalid pagination values"}, status=400)
+
+        notes = notes_collection.find({"user_id": ObjectId(request.user_id)}).sort("updated_at", -1)\
+                    .skip(skip)\
+                    .limit(limit)
 
         note_list = []
 
@@ -68,7 +79,10 @@ def update_note(request, note_id):
         return JsonResponse({"success": False, "error": "PUT method required"}, status=405)
 
     try:
-        data = json.loads(request.body)
+        try:
+            data = json.loads(request.body)
+        except json.JSONDecodeError:
+            return JsonResponse({"success": False, "error": "Invalid JSON body"}, status=400)
 
         update_data = {}
 
