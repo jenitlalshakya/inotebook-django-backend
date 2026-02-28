@@ -156,3 +156,32 @@ def change_password(request):
         return JsonResponse({"success": True, "message": "Password changed successfully"}, status=200)
     
     return JsonResponse({"success": False, "error": "Method not allowed"}, status=405)
+
+@csrf_exempt
+@jwt_required
+def profile(request):
+    if request.method == "GET":
+        try:
+            user = users_collection.find_one({"_id": ObjectId(request.user_id)})
+            if not user:
+                return JsonResponse({"success": False, "error": "User not found"}, status=404)
+
+            created_at = user.get("created_at")
+            created_at_str = None
+            if created_at:
+                if isinstance(created_at, datetime):
+                    created_at_str = created_at.isoformat()
+                else:
+                    created_at_str = str(created_at)
+            return JsonResponse({
+                "success": True,
+                "user": {
+                    "name": user.get("name", ""),
+                    "email": user.get("email", ""),
+                    "created_at": created_at_str,
+                }
+            }, status=200)
+        except Exception as e:
+            return JsonResponse({"success": False, "error": str(e)}, status=500)
+
+    return JsonResponse({"success": False, "error": "Method not allowed"}, status=405)
