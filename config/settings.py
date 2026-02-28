@@ -26,6 +26,7 @@ load_dotenv()
 SECRET_KEY = 'django-insecure-+vuhygb(h1(edua3dn$jrr=53zb2@9p*elxd71ivyd2-tlb@)z'
 JWT_SECRET = os.getenv("JWT_SECRET")
 PEPPER = os.getenv("PASSWORD_PEPPER")
+ENCRYPTION_KEY = os.getenv("ENCRYPTION_KEY")
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 

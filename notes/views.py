@@ -4,6 +4,7 @@ from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 from core.mongo import notes_collection
 from core.schema.Note_Schema import NoteSchema
+from core.utils.encryption import encrypt_text, decrypt_text
 from accounts.utils import jwt_required
 from bson import ObjectId
 
@@ -22,12 +23,16 @@ def create_note(request):
         # Validate input
         validated = NoteSchema(**data)
 
+        enc_title = encrypt_text(validated.title)
+        enc_content = encrypt_text(validated.content)
+        enc_tag = encrypt_text(validated.tag)
+
         # Create note dictionary
         note = {
             "user_id": ObjectId(request.user_id),
-            "title": validated.title,
-            "content": validated.content,
-            "tag": validated.tag,
+            "title": enc_title,
+            "content": enc_content,
+            "tag": enc_tag,
             "created_at": datetime.utcnow(),
             "updated_at": datetime.utcnow()
         }
@@ -60,9 +65,9 @@ def get_notes(request):
         for note in notes:
             note_list.append({
                 "id": str(note["_id"]),
-                "title": note["title"],
-                "content": note["content"],
-                "tag": note["tag"],
+                "title": decrypt_text(note["title"]),
+                "content": decrypt_text(note["content"]),
+                "tag": decrypt_text(note["tag"]),
                 "created_at": note["created_at"].isoformat() + "Z",
                 "updated_at": note["updated_at"].isoformat() + "Z"
             })
@@ -87,13 +92,16 @@ def update_note(request, note_id):
         update_data = {}
 
         if "title" in data:
-            update_data["title"] = data["title"]
+            enc_title = encrypt_text(data["title"])
+            update_data["title"] = enc_title
 
         if "content" in data:
-            update_data["content"] = data["content"]
+            enc_content = encrypt_text(data["content"])
+            update_data["content"] = enc_content
 
         if "tag" in data:
-            update_data["tag"] = data["tag"]
+            enc_tag = encrypt_text(data["tag"])
+            update_data["tag"] = enc_tag
 
         update_data["updated_at"] = datetime.utcnow()
 
