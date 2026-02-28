@@ -10,7 +10,9 @@ Django==6.0.2
 django-cors-headers==4.9.0
 dnspython==2.8.0
 email-validator==2.3.0
+gunicorn==25.1.0
 idna==3.11
+packaging==26.0
 pycparser==3.0
 pydantic==2.12.5
 pydantic_core==2.41.5
