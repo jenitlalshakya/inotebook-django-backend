@@ -1,4 +1,5 @@
 import json
+import re
 from datetime import datetime
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
@@ -111,15 +112,46 @@ def search_notes(request):
                 "updated_at": note["updated_at"].isoformat() + "Z"
             })
 
-        # 3. Parse multiple conditions (comma-separated); each is field:keyword or general keyword
+        # 3. Parse multiple conditions (comma-separated); each is field:keyword or general keyword.
+        #    Also support manual OR groups within a segment using "or", e.g. "title:db or content:db".
         conditions = [c.strip() for c in search.split(",") if c.strip()]
 
         title_filters = []
         content_filters = []
         tag_filters = []
         general_filters = []
+        or_groups = []  # each group is a list of (field, keyword)
 
         for cond in conditions:
+            # Detect manual OR groups between different fields: "... or ..."
+            lower_cond = cond.lower()
+            if " or " in lower_cond:
+                parts = [p.strip() for p in re.split(r"\bor\b", cond, flags=re.IGNORECASE) if p.strip()]
+                group = []
+                for part in parts:
+                    part_stripped = part.strip()
+                    lower_part = part_stripped.lower()
+                    if lower_part.startswith("title:"):
+                        kw = part_stripped[len("title:"):].strip().lower()
+                        if kw:
+                            group.append(("title", kw))
+                    elif lower_part.startswith("content:"):
+                        kw = part_stripped[len("content:"):].strip().lower()
+                        if kw:
+                            group.append(("content", kw))
+                    elif lower_part.startswith("tag:"):
+                        kw = part_stripped[len("tag:"):].strip().lower()
+                        if kw:
+                            group.append(("tag", kw))
+                    else:
+                        kw = lower_part.strip()
+                        if kw:
+                            group.append(("general", kw))
+                if group:
+                    or_groups.append(group)
+                continue
+
+            # Normal single condition (no "or" inside segment)
             if cond.startswith("title:"):
                 kw = cond.replace("title:", "", 1).strip().lower()
                 if kw:
@@ -140,8 +172,9 @@ def search_notes(request):
         # 4. Filter:
         #    - Within a given field, ANY of its filters may match (OR logic).
         #    - Between different fields, ALL present field groups must match (AND logic).
+        #    - OR groups: each group must have at least one matching condition.
         #    - General (no-prefix) keywords keep existing behavior: ALL of them must match somewhere.
-        if not (title_filters or content_filters or tag_filters or general_filters):
+        if not (title_filters or content_filters or tag_filters or general_filters or or_groups):
             filtered = []
         else:
             filtered = []
@@ -166,6 +199,34 @@ def search_notes(request):
                         break
 
                 if not general_ok:
+                    continue
+
+                # OR groups: each group must have at least one condition satisfied
+                groups_ok = True
+                for group in or_groups:
+                    group_match = False
+                    for field, kw in group:
+                        if field == "title":
+                            if kw in title_val:
+                                group_match = True
+                                break
+                        elif field == "content":
+                            if kw in content_val:
+                                group_match = True
+                                break
+                        elif field == "tag":
+                            if kw in tag_val:
+                                group_match = True
+                                break
+                        elif field == "general":
+                            if kw in title_val or kw in content_val or kw in tag_val:
+                                group_match = True
+                                break
+                    if not group_match:
+                        groups_ok = False
+                        break
+
+                if not groups_ok:
                     continue
 
                 filtered.append(note)
