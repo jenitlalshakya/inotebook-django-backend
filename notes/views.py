@@ -77,6 +77,91 @@ def get_notes(request):
     except Exception as e:
         return JsonResponse({"success": False, "error": str(e)}, status=500)
 
+
+@jwt_required
+def search_notes(request):
+    if request.method != "GET":
+        return JsonResponse({"success": False, "error": "GET method required"}, status=405)
+
+    try:
+        search = request.GET.get("q", "").strip()
+        try:
+            limit = min(max(int(request.GET.get("limit", 20)), 1), 100)
+            skip = max(int(request.GET.get("skip", 0)), 0)
+        except ValueError:
+            return JsonResponse({"success": False, "error": "Invalid pagination values"}, status=400)
+
+        if not search:
+            return JsonResponse({"success": True, "notes": []}, status=200)
+
+        user_id = request.user_id
+        # 1. Fetch all user notes (no regex – fields are encrypted in DB)
+        notes_cursor = notes_collection.find({"user_id": ObjectId(user_id)}).sort("updated_at", -1)
+        notes_list = list(notes_cursor)
+
+        # 2. Decrypt in memory (never stored back to DB)
+        decrypted_notes = []
+        for note in notes_list:
+            decrypted_notes.append({
+                "id": str(note["_id"]),
+                "title": decrypt_text(note["title"]),
+                "content": decrypt_text(note["content"]),
+                "tag": decrypt_text(note["tag"]),
+                "created_at": note["created_at"].isoformat() + "Z",
+                "updated_at": note["updated_at"].isoformat() + "Z"
+            })
+
+        # 3. Parse multiple conditions (comma-separated); each is field:keyword or general keyword
+        conditions = [c.strip() for c in search.split(",") if c.strip()]
+        parsed_conditions = []
+        for cond in conditions:
+            if cond.startswith("title:"):
+                kw = cond.replace("title:", "", 1).strip().lower()
+                if kw:
+                    parsed_conditions.append(("title", kw))
+            elif cond.startswith("content:"):
+                kw = cond.replace("content:", "", 1).strip().lower()
+                if kw:
+                    parsed_conditions.append(("content", kw))
+            elif cond.startswith("tag:"):
+                kw = cond.replace("tag:", "", 1).strip().lower()
+                if kw:
+                    parsed_conditions.append(("tag", kw))
+            else:
+                parsed_conditions.append(("general", cond.lower()))
+
+        # 4. Filter: all conditions must match (AND), case-insensitive
+        if not parsed_conditions:
+            filtered = []
+        else:
+            filtered = []
+            for note in decrypted_notes:
+                match = True
+                for field, keyword in parsed_conditions:
+                    if field == "general":
+                        t = (note.get("title") or "").lower()
+                        c = (note.get("content") or "").lower()
+                        g = (note.get("tag") or "").lower()
+                        if keyword not in t and keyword not in c and keyword not in g:
+                            match = False
+                            break
+                    else:
+                        val = (note.get(field) or "").lower()
+                        if keyword not in val:
+                            match = False
+                            break
+                if match:
+                    filtered.append(note)
+
+        # 5. Paginate after filtering
+        results = filtered[skip : skip + limit]
+
+        return JsonResponse({"success": True, "notes": results}, status=200)
+
+    except Exception as e:
+        return JsonResponse({"success": False, "error": str(e)}, status=500)
+
+
 @csrf_exempt
 @jwt_required
 def update_note(request, note_id):
