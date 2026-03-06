@@ -113,45 +113,62 @@ def search_notes(request):
 
         # 3. Parse multiple conditions (comma-separated); each is field:keyword or general keyword
         conditions = [c.strip() for c in search.split(",") if c.strip()]
-        parsed_conditions = []
+
+        title_filters = []
+        content_filters = []
+        tag_filters = []
+        general_filters = []
+
         for cond in conditions:
             if cond.startswith("title:"):
                 kw = cond.replace("title:", "", 1).strip().lower()
                 if kw:
-                    parsed_conditions.append(("title", kw))
+                    title_filters.append(kw)
             elif cond.startswith("content:"):
                 kw = cond.replace("content:", "", 1).strip().lower()
                 if kw:
-                    parsed_conditions.append(("content", kw))
+                    content_filters.append(kw)
             elif cond.startswith("tag:"):
                 kw = cond.replace("tag:", "", 1).strip().lower()
                 if kw:
-                    parsed_conditions.append(("tag", kw))
+                    tag_filters.append(kw)
             else:
-                parsed_conditions.append(("general", cond.lower()))
+                kw = cond.lower()
+                if kw:
+                    general_filters.append(kw)
 
-        # 4. Filter: all conditions must match (AND), case-insensitive
-        if not parsed_conditions:
+        # 4. Filter:
+        #    - Within a given field, ANY of its filters may match (OR logic).
+        #    - Between different fields, ALL present field groups must match (AND logic).
+        #    - General (no-prefix) keywords keep existing behavior: ALL of them must match somewhere.
+        if not (title_filters or content_filters or tag_filters or general_filters):
             filtered = []
         else:
             filtered = []
             for note in decrypted_notes:
-                match = True
-                for field, keyword in parsed_conditions:
-                    if field == "general":
-                        t = (note.get("title") or "").lower()
-                        c = (note.get("content") or "").lower()
-                        g = (note.get("tag") or "").lower()
-                        if keyword not in t and keyword not in c and keyword not in g:
-                            match = False
-                            break
-                    else:
-                        val = (note.get(field) or "").lower()
-                        if keyword not in val:
-                            match = False
-                            break
-                if match:
-                    filtered.append(note)
+                title_val = (note.get("title") or "").lower()
+                content_val = (note.get("content") or "").lower()
+                tag_val = (note.get("tag") or "").lower()
+
+                # AND between fields: if a field group has filters, it must match at least one (OR within field)
+                if title_filters and not any(kw in title_val for kw in title_filters):
+                    continue
+                if content_filters and not any(kw in content_val for kw in content_filters):
+                    continue
+                if tag_filters and not any(kw in tag_val for kw in tag_filters):
+                    continue
+
+                # General (no-prefix) terms: preserve original semantics (ALL must match somewhere)
+                general_ok = True
+                for kw in general_filters:
+                    if kw not in title_val and kw not in content_val and kw not in tag_val:
+                        general_ok = False
+                        break
+
+                if not general_ok:
+                    continue
+
+                filtered.append(note)
 
         # 5. Paginate after filtering
         results = filtered[skip : skip + limit]
