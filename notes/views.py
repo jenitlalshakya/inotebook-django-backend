@@ -57,6 +57,8 @@ def get_notes(request):
         except ValueError:
             return JsonResponse({"success": False, "error": "Invalid pagination values"}, status=400)
 
+        total_count = notes_collection.count_documents({"user_id": ObjectId(request.user_id)})
+
         notes = notes_collection.find({"user_id": ObjectId(request.user_id)}).sort("updated_at", -1)\
                     .skip(skip)\
                     .limit(limit)
@@ -73,7 +75,7 @@ def get_notes(request):
                 "updated_at": note["updated_at"].isoformat() + "Z"
             })
 
-        return JsonResponse({"success": True, "notes": note_list}, status=200)
+        return JsonResponse({"success": True, "count": total_count, "notes": note_list}, status=200)
     
     except Exception as e:
         return JsonResponse({"success": False, "error": str(e)}, status=500)
