@@ -28,6 +28,7 @@ JWT_SECRET = os.getenv("JWT_SECRET")
 PEPPER = os.getenv("PASSWORD_PEPPER")
 ENCRYPTION_KEY = os.getenv("ENCRYPTION_KEY")
 FRONTEND_URL = os.getenv("FRONTEND_URL")
+CSRF_TRUSTED_ORIGINS = [os.getenv("FRONTEND_URL")]
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = False
 
