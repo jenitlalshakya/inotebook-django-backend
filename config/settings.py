@@ -23,14 +23,14 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 
 # SECURITY WARNING: keep the secret key used in production secret!
 load_dotenv()
-SECRET_KEY = 'django-insecure-+vuhygb(h1(edua3dn$jrr=53zb2@9p*elxd71ivyd2-tlb@)z'
+SECRET_KEY = os.getenv("DJANGO_SECRET_KEY")
 JWT_SECRET = os.getenv("JWT_SECRET")
 PEPPER = os.getenv("PASSWORD_PEPPER")
 ENCRYPTION_KEY = os.getenv("ENCRYPTION_KEY")
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+DEBUG = False
 
-# ALLOWED_HOSTS = os.getenv("ALLOWED_HOSTS", "127.0.0.1,localhost").split(",")
+ALLOWED_HOSTS = os.getenv("ALLOWED_HOSTS", "127.0.0.1,localhost").split(",")
 ALLOWED_HOSTS = []
 
 # Application definition
@@ -61,9 +61,8 @@ MIDDLEWARE = [
 ROOT_URLCONF = 'config.urls'
 
 CORS_ALLOWED_ORIGINS = [
-    # "CORS_ALLOWED_ORIGINS",
-    "http://localhost:5173",
-]    #.split(",")
+    os.getenv("FRONTEND_URL", "http://localhost:5173")  # Vercel frontend in production
+]
 
 CORS_ALLOW_CREDENTIALS = True
 
