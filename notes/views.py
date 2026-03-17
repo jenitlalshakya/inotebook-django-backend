@@ -57,7 +57,11 @@ def get_notes(request):
         except ValueError:
             return JsonResponse({"success": False, "error": "Invalid pagination values"}, status=400)
 
-        query = {"user_id": ObjectId(request.user_id), "is_deleted": {"$ne": True}}
+        query = {
+                    "user_id": ObjectId(request.user_id),
+                    "is_deleted": {"$ne": True},
+                    "is_favorite": {"$ne": True}
+                }
 
         total_count = notes_collection.count_documents(query)
 
@@ -301,7 +305,10 @@ def delete_note(request, note_id):
                 "user_id": ObjectId(request.user_id)
             },
             {
-                "$set": {"is_deleted": True}
+                "$set": {
+                    "is_deleted": True,
+                    "is_favorite": False
+                },
             }
         )
 
@@ -417,3 +424,85 @@ def restore_note(request, note_id):
     except Exception as e:
         return JsonResponse({"success": False, "error": str(e)}, status=500)
         
+@csrf_exempt
+@jwt_required
+def favorite_note(request, note_id):
+    if request.method != "PUT":
+        return JsonResponse({"success": False, "error": "PUT method required"}, status=405)
+
+    try:
+        result = notes_collection.update_one(
+            {
+                "_id": ObjectId(note_id),
+                "user_id": ObjectId(request.user_id),
+                "is_deleted": {"$ne": True}
+            },
+            {
+                "$set": {"is_favorite": True}
+            }
+        )
+
+        if result.matched_count == 0:
+            return JsonResponse({"success": False, "error": "Note not found or unauthorized"}, status=404)
+
+        return JsonResponse({"success": True, "is_favorite": True, "message": "Note marked as favorite"}, status=200)
+
+    except Exception as e:
+        return JsonResponse({"success": False, "error": str(e)}, status=500)
+
+@csrf_exempt
+@jwt_required
+def unfavorite_note(request, note_id):
+    if request.method != "PUT":
+        return JsonResponse({"success": False, "error": "PUT method required"}, status=405)
+
+    try:
+        result = notes_collection.update_one(
+            {
+                "_id": ObjectId(note_id),
+                "user_id": ObjectId(request.user_id),
+                "is_deleted": {"$ne": True}
+            },
+            {
+                "$set": {"is_favorite": False}
+            }
+        )
+
+        if result.matched_count == 0:
+            return JsonResponse({"success": False, "error": "Note not found or unauthorized"}, status=404)
+
+        return JsonResponse({"success": True, "is_favorite": False, "message": "Note unfavorited"}, status=200)
+
+    except Exception as e:
+        return JsonResponse({"success": False, "error": str(e)}, status=500)
+
+@jwt_required
+def get_favorites(request):
+    if request.method != "GET":
+        return JsonResponse({"success": False, "error": "GET method required"}, status=405)
+
+    try:
+        query = {
+            "user_id": ObjectId(request.user_id),
+            "is_favorite": True,
+            "is_deleted": {"$ne": True}
+        }
+
+        notes = list(notes_collection.find(query).sort("updated_at", -1))
+
+        note_list = []
+        for note in notes:
+            note_list.append({
+                "id": str(note["_id"]),
+                "title": decrypt_text(note.get("title", "")),
+                "content": decrypt_text(note.get("content", "")),
+                "tag": decrypt_text(note.get("tag", "")),
+                "is_favorite": True,
+                "created_at": note.get("created_at").isoformat() + "Z" if note.get("created_at") else "",
+                "updated_at": note.get("updated_at").isoformat() + "Z" if note.get("updated_at") else ""
+            })
+
+        return JsonResponse({"success": True, "notes": note_list}, status=200)
+
+    except Exception as e:
+        return JsonResponse({"success": False, "error": str(e)}, status=500)

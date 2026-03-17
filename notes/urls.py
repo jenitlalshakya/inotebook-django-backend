@@ -1,5 +1,5 @@
 from django.urls import path
-from .views import create_note, get_notes, search_notes, update_note, delete_note, permanent_delete_note, empty_trash, get_trash_notes, restore_note
+from .views import create_note, get_notes, search_notes, update_note, delete_note, permanent_delete_note, empty_trash, get_trash_notes, restore_note, favorite_note, unfavorite_note, get_favorites
 
 urlpatterns = [
     path("create/", create_note),
@@ -11,4 +11,7 @@ urlpatterns = [
     path("empty-trash/", empty_trash),
     path("get-trash/", get_trash_notes),
     path("restore/<str:note_id>/", restore_note),
+    path("favorite/<str:note_id>/", favorite_note),
+    path("unfavorite/<str:note_id>/", unfavorite_note),
+    path("favorites/", get_favorites),
 ]
