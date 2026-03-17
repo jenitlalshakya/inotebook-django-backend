@@ -57,9 +57,11 @@ def get_notes(request):
         except ValueError:
             return JsonResponse({"success": False, "error": "Invalid pagination values"}, status=400)
 
-        total_count = notes_collection.count_documents({"user_id": ObjectId(request.user_id)})
+        query = {"user_id": ObjectId(request.user_id), "is_deleted": {"$ne": True}}
 
-        notes = notes_collection.find({"user_id": ObjectId(request.user_id)}).sort("updated_at", -1)\
+        total_count = notes_collection.count_documents(query)
+
+        notes = notes_collection.find(query).sort("updated_at", -1)\
                     .skip(skip)\
                     .limit(limit)
 
@@ -293,17 +295,125 @@ def delete_note(request, note_id):
         return JsonResponse({"success": False, "error": "DELETE method required"}, status=405)
 
     try:
-        result = notes_collection.delete_one(
+        result = notes_collection.update_one(
             {
                 "_id": ObjectId(note_id),
                 "user_id": ObjectId(request.user_id)
+            },
+            {
+                "$set": {"is_deleted": True}
+            }
+        )
+
+        if result.matched_count == 0:
+            return JsonResponse({"success": False, "error": "Note not found"}, status=404)
+
+        return JsonResponse({"success": True, "message": "Note moved to Trash"}, status=200)
+
+    except Exception as e:
+        return JsonResponse({"success": False, "error": str(e)}, status=500)
+
+@csrf_exempt
+@jwt_required
+def permanent_delete_note(request, note_id):
+    if request.method != "DELETE":
+        return JsonResponse({"success": False, "error": "DELETE method required"}, status=405)
+
+    try:
+        result = notes_collection.delete_one(
+            {
+                "_id": ObjectId(note_id),
+                "user_id": ObjectId(request.user_id),
+                "is_deleted": True
             }
         )
 
         if result.deleted_count == 0:
-            return JsonResponse({"success": False, "error": "Note not found"}, status=404)
+            return JsonResponse({"success": False, "error": "Note not found in trash"}, status=404)
 
-        return JsonResponse({"success": True, "message": "Note deleted successfully"}, status=200)
+        return JsonResponse({"success": True, "message": "Note permanently deleted"}, status=200)
 
     except Exception as e:
         return JsonResponse({"success": False, "error": str(e)}, status=500)
+
+@csrf_exempt
+@jwt_required
+def empty_trash(request):
+    if request.method != "DELETE":
+        return JsonResponse({"success": False, "error": "DELETE method required"}, status=405)
+
+    try:
+        result = notes_collection.delete_many(
+            {
+                "user_id": ObjectId(request.user_id),
+                "is_deleted": True
+            }
+        )
+
+        return JsonResponse({"success": True, "message": f"{result.deleted_count} notes permanently deleted"}, status=200)
+
+    except Exception as e:
+        return JsonResponse({"success": False, "error": str(e)}, status=500)
+
+@jwt_required
+def get_trash_notes(request):
+    if request.method != "GET":
+        return JsonResponse({"success": False, "error": "GET method required"}, status=405)
+
+    try:
+        query = {"user_id": ObjectId(request.user_id), "is_deleted": True}
+
+        notes = list(notes_collection.find(query).sort("updated_at", -1))
+
+        note_list = []
+        for note in notes:
+            note_list.append({
+                "id": str(note.get("_id")),
+                "title": decrypt_text(note.get("title", "")),
+                "content": decrypt_text(note.get("content", "")),
+                "tag": decrypt_text(note.get("tag", "")),
+                "created_at": note.get("created_at").isoformat() + "Z" if note.get("created_at") else "",
+                "updated_at": note.get("updated_at").isoformat() + "Z" if note.get("updated_at") else ""
+            })
+
+        return JsonResponse({"success": True, "notes": note_list})
+    except Exception as e:
+        return JsonResponse({"success": False, "error": str(e)}, status=500)
+
+@csrf_exempt
+@jwt_required
+def restore_note(request, note_id):
+    if request.method != "POST":
+        return JsonResponse({"success": False, "error": "POST method required"}, status=405)
+
+    try:
+        # Find the note in trash
+        result = notes_collection.update_one(
+            {
+                "_id": ObjectId(note_id),
+                "user_id": ObjectId(request.user_id),
+                "is_deleted": True
+            },
+            {"$set": {"is_deleted": False, "updated_at": datetime.utcnow()}}
+        )
+
+        if result.matched_count == 0:
+            return JsonResponse({"success": False, "error": "Note not found in trash"}, status=404)
+
+        # Fetch restored note to return
+        note = notes_collection.find_one({"_id": ObjectId(note_id)})
+
+        restored_note = {
+            "id": str(note["_id"]),
+            "title": decrypt_text(note.get("title", "")),
+            "content": decrypt_text(note.get("content", "")),
+            "tag": decrypt_text(note.get("tag", "")),
+            "created_at": note.get("created_at").isoformat() + "Z" if note.get("created_at") else "",
+            "updated_at": note.get("updated_at").isoformat() + "Z" if note.get("updated_at") else ""
+        }
+
+        return JsonResponse({"success": True, "note": restored_note}, status=200)
+
+    except Exception as e:
+        return JsonResponse({"success": False, "error": str(e)}, status=500)
+        
