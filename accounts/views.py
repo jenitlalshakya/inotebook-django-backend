@@ -50,7 +50,7 @@ def signup(request):
             except DuplicateKeyError:
                 return JsonResponse({"success": False, "error": "Email already exists"}, status=400)
 
-            return JsonResponse({"success": True, "message": "User created successfully"})
+            return JsonResponse({"success": True, "message": "User created successfully"}, status=200)
 
         except Exception as e:
             return JsonResponse({"success": False, "error": str(e)}, status=500)
