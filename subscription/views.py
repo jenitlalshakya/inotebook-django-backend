@@ -12,6 +12,7 @@ from django.views.decorators.csrf import csrf_exempt
 from bson import ObjectId
 from core.mongo import users_collection
 from accounts.utils import jwt_required
+from dotenv import load_dotenv
 
 load_dotenv()
 ESEWA_SECRET_KEY = os.getenv("ESEWA_SECRET_KEY")
