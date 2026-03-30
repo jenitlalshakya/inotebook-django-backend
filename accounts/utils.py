@@ -39,6 +39,28 @@ def jwt_required(func):
             if not user:
                 return JsonResponse({"success": False, "error": "User not found"}, status=404)
 
+            # Check subscription expiry
+            plan = user.get("plan", "free")
+            if plan != "free":
+                sub_end = user.get("subscription_end")
+                if sub_end:
+                    if isinstance(sub_end, str):
+                        try:
+                            sub_end = datetime.fromisoformat(sub_end)
+                        except ValueError:
+                            pass
+                    if isinstance(sub_end, datetime) and datetime.utcnow() > sub_end:
+                        # Expired, revert to free
+                        users_collection.update_one(
+                            {"_id": ObjectId(user_id)},
+                            {
+                                "$set": {"plan": "free"},
+                                "$unset": {"subscription_type": "", "subscription_start": "", "subscription_end": ""}
+                            }
+                        )
+                        plan = "free"
+                        user["plan"] = "free"
+
             # 🔐 Check if password was changed after token was issued
             if user.get("password_changed_at") and token_iat:
                 password_changed_time = user["password_changed_at"]
@@ -50,8 +72,10 @@ def jwt_required(func):
                 if token_iat < password_changed_time:
                     return JsonResponse({"success": False, "error": "Token expired due to password change. Please login again."}, status=401)
 
-            # Attach user_id to request
+            # Attach user_id and plan info to request
             request.user_id = user_id
+            request.plan = plan
+            request.storage_used = user.get("storage_used", 0)
 
         except jwt.ExpiredSignatureError:
             return JsonResponse({"success": False, "error": "Token expired"}, status=401)

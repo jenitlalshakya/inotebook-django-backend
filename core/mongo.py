@@ -12,6 +12,7 @@ try:
     # Collections
     users_collection = db["users"]
     notes_collection = db["notes"]
+    files_collection = db["files"]
 
     # Ensure email uniqueness
     users_collection.create_index([("email", ASCENDING)], unique=True)

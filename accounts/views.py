@@ -177,12 +177,24 @@ def profile(request):
                     created_at_str = created_at.isoformat()
                 else:
                     created_at_str = str(created_at)
+                    
+            sub_end = user.get("subscription_end")
+            sub_end_str = None
+            if sub_end:
+                if isinstance(sub_end, datetime):
+                    sub_end_str = sub_end.isoformat()
+                else:
+                    sub_end_str = str(sub_end)
+
             return JsonResponse({
                 "success": True,
                 "user": {
                     "name": user.get("name", ""),
                     "email": user.get("email", ""),
                     "created_at": created_at_str,
+                    "plan": user.get("plan", "free"),
+                    "storage_used": user.get("storage_used", 0),
+                    "subscription_end": sub_end_str,
                 }
             }, status=200)
         except Exception as e:

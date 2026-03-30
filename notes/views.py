@@ -23,6 +23,21 @@ def create_note(request):
             
         # Validate input
         validated = NoteSchema(**data)
+        
+        # Enforce subscription limits
+        if getattr(request, 'plan', 'free') == 'free':
+            # Check note count
+            total_notes = notes_collection.count_documents({
+                "user_id": ObjectId(request.user_id),
+                "is_deleted": {"$ne": True}
+            })
+            if total_notes >= 50:
+                return JsonResponse({"success": False, "error": "Free plan limit reached (50 notes). Please upgrade your plan."}, status=403)
+                
+            # Check word count
+            word_count = len(validated.content.split())
+            if word_count > 500:
+                return JsonResponse({"success": False, "error": f"Free plan limit exceeded: 500 words max per note (current: {word_count}). Please upgrade."}, status=403)
 
         enc_title = encrypt_text(validated.title)
         enc_content = encrypt_text(validated.content)
@@ -267,6 +282,11 @@ def update_note(request, note_id):
             update_data["title"] = enc_title
 
         if "content" in data:
+            # Enforce limit if free plan
+            if getattr(request, 'plan', 'free') == 'free':
+                word_count = len(data["content"].split())
+                if word_count > 500:
+                    return JsonResponse({"success": False, "error": f"Free plan limit exceeded: 500 words max per note (current: {word_count}). Please upgrade."}, status=403)
             enc_content = encrypt_text(data["content"])
             update_data["content"] = enc_content
 
