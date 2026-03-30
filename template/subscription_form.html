@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Redirecting to eSewa...</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            background-color: #f8f9fa;
+        }
+        .container {
+            text-align: center;
+        }
+        .spinner {
+            border: 4px solid rgba(0, 0, 0, 0.1);
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            border-left-color: #60bb46;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 20px auto;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="spinner"></div>
+        <h2>Redirecting to eSewa setup...</h2>
+        <p>Please wait while we redirect you to the payment gateway.</p>
+        
+        <form id="esewa-form" action="https://rc-epay.esewa.com.np/api/epay/main/v2/form" method="POST" style="display: none;">
+            <input type="hidden" id="amount" name="amount" value="{{ amount }}" required>
+            <input type="hidden" id="tax_amount" name="tax_amount" value ="0" required>
+            <input type="hidden" id="total_amount" name="total_amount" value="{{ total_amount }}" required>
+            <input type="hidden" id="transaction_uuid" name="transaction_uuid" value="{{ transaction_uuid }}" required>
+            <input type="hidden" id="product_code" name="product_code" value="{{ product_code }}" required>
+            <input type="hidden" id="product_service_charge" name="product_service_charge" value="0" required>
+            <input type="hidden" id="product_delivery_charge" name="product_delivery_charge" value="0" required>
+            <input type="hidden" id="success_url" name="success_url" value="{{ success_url }}" required>
+            <input type="hidden" id="failure_url" name="failure_url" value="{{ failure_url }}" required>
+            <input type="hidden" id="signed_field_names" name="signed_field_names" value="{{ signed_field_names }}" required>
+            <input type="hidden" id="signature" name="signature" value="{{ signature }}" required>
+            
+            <button type="submit" id="submit-btn">Pay with eSewa</button>
+        </form>
+    </div>
+
+    <script>
+        window.addEventListener('load', function() {
+            document.getElementById('esewa-form').submit();
+        });
+    </script>
+</body>
+</html>

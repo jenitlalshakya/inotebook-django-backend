@@ -12,17 +12,18 @@ def jwt_required(func):
     @wraps(func)
     def wrapper(request, *args, **kwargs):
         auth_header = request.headers.get("Authorization")
+        token = request.GET.get("token")
 
-        if not auth_header:
-            return JsonResponse({"success": False, "error": "Authorization header missing"}, status=401)
+        if not auth_header and not token:
+            return JsonResponse({"success": False, "error": "Authorization header or token missing"}, status=401)
 
         try:
-            # Validate header format
-            parts = auth_header.split(" ")
-            if len(parts) != 2 or parts[0] != "Bearer":
-                return JsonResponse({"success": False, "error": "Invalid authorization format"}, status=401)
-
-            token = parts[1]
+            if auth_header:
+                # Validate header format
+                parts = auth_header.split(" ")
+                if len(parts) != 2 or parts[0] != "Bearer":
+                    return JsonResponse({"success": False, "error": "Invalid authorization format"}, status=401)
+                token = parts[1]
 
             # Decode token
             payload = jwt.decode(token, JWT_SECRET, algorithms=["HS256"])
