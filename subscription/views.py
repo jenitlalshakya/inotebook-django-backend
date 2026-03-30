@@ -1,4 +1,4 @@
-from backend.config.settings import FRONTEND_URL
+from config.settings import FRONTEND_URL
 import os
 import json
 import base64
