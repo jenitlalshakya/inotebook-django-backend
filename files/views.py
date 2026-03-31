@@ -1,6 +1,7 @@
 import os
 from datetime import datetime
-from django.http import JsonResponse
+from django.http import JsonResponse, FileResponse, Http404
+from django.utils.encoding import smart_str
 from django.views.decorators.csrf import csrf_exempt
 from bson import ObjectId
 from core.mongo import files_collection, users_collection
@@ -89,6 +90,32 @@ def list_files(request):
             })
 
         return JsonResponse({"success": True, "files": file_list}, status=200)
+
+    except Exception as e:
+        return JsonResponse({"success": False, "error": str(e)}, status=500)
+
+@csrf_exempt
+@jwt_required
+def download_file(request, file_id):
+    if request.method != "GET":
+        return JsonResponse({"success": False, "error": "Method not allowed"}, status=405)
+
+    try:
+        # Fetch the file from DB
+        file_doc = files_collection.find_one({"_id": ObjectId(file_id), "user_id": ObjectId(request.user_id)})
+        if not file_doc:
+            return JsonResponse({"success": False, "error": "File not found"}, status=404)
+
+        file_name = file_doc.get("file_name")
+        file_path = os.path.join(settings.MEDIA_ROOT, str(request.user_id), file_name)
+
+        if not os.path.exists(file_path):
+            return JsonResponse({"success": False, "error": "File missing from server"}, status=404)
+
+        # Serve file as attachment
+        response = FileResponse(open(file_path, "rb"), as_attachment=True)
+        response['Content-Disposition'] = f'attachment; filename="{smart_str(file_name)}"'
+        return response
 
     except Exception as e:
         return JsonResponse({"success": False, "error": str(e)}, status=500)
