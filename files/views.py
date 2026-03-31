@@ -1,6 +1,8 @@
 import os
+import re
 from datetime import datetime
 from django.http import JsonResponse, FileResponse, Http404
+from urllib.parse import quote
 from django.utils.encoding import smart_str
 from django.views.decorators.csrf import csrf_exempt
 from bson import ObjectId
@@ -36,19 +38,21 @@ def upload_file(request):
         user_dir = os.path.join(settings.MEDIA_ROOT, str(request.user_id))
         os.makedirs(user_dir, exist_ok=True)
         
-        file_path = os.path.join(user_dir, uploaded_file.name)
+        # Sanitize filename (replace special chars with _)
+        safe_file_name = re.sub(r'[^a-zA-Z0-9_.-]', '_', uploaded_file.name)
+        file_path = os.path.join(user_dir, safe_file_name)
         
-        # Save file chunks
+        # Save file
         with open(file_path, "wb+") as f:
             for chunk in uploaded_file.chunks():
                 f.write(chunk)
                 
-        file_url = f"{settings.MEDIA_URL}{request.user_id}/{uploaded_file.name}"
+        file_url = f"{settings.MEDIA_URL}{request.user_id}/{safe_file_name}"
 
-        # Save record in db
+        # Save record in DB
         file_record = {
             "user_id": ObjectId(request.user_id),
-            "file_name": uploaded_file.name,
+            "file_name": safe_file_name,
             "file_size": file_size,
             "file_type": uploaded_file.content_type,
             "file_url": file_url,
@@ -68,7 +72,6 @@ def upload_file(request):
 
     except Exception as e:
         return JsonResponse({"success": False, "error": str(e)}, status=500)
-
 
 @csrf_exempt
 @jwt_required
@@ -101,7 +104,6 @@ def download_file(request, file_id):
         return JsonResponse({"success": False, "error": "Method not allowed"}, status=405)
 
     try:
-        # Fetch the file from DB
         file_doc = files_collection.find_one({"_id": ObjectId(file_id), "user_id": ObjectId(request.user_id)})
         if not file_doc:
             return JsonResponse({"success": False, "error": "File not found"}, status=404)
@@ -112,10 +114,11 @@ def download_file(request, file_id):
         if not os.path.exists(file_path):
             return JsonResponse({"success": False, "error": "File missing from server"}, status=404)
 
-        # Serve file as attachment
-        response = FileResponse(open(file_path, "rb"), as_attachment=True)
-        response['Content-Disposition'] = f'attachment; filename="{smart_str(file_name)}"'
-        return response
+        with open(file_path, "rb") as f:
+            response = FileResponse(f, as_attachment=True)
+            # URL-encode filename for safety
+            response['Content-Disposition'] = f"attachment; filename*=UTF-8''{quote(file_name)}"
+            return response
 
     except Exception as e:
         return JsonResponse({"success": False, "error": str(e)}, status=500)
