@@ -1,13 +1,12 @@
 import os
 import re
+import mimetypes
 from datetime import datetime
-from django.http import JsonResponse, FileResponse, Http404
+from django.http import JsonResponse, FileResponse
 from urllib.parse import quote
-from django.utils.encoding import smart_str
 from django.views.decorators.csrf import csrf_exempt
 from bson import ObjectId
 from core.mongo import files_collection, users_collection
-from core.schema.File_Schema import FileSchema
 from accounts.utils import jwt_required
 from django.conf import settings
 from subscription.views import PLANS
@@ -114,11 +113,12 @@ def download_file(request, file_id):
         if not os.path.exists(file_path):
             return JsonResponse({"success": False, "error": "File missing from server"}, status=404)
 
-        with open(file_path, "rb") as f:
-            response = FileResponse(f, as_attachment=True)
-            # URL-encode filename for safety
-            response['Content-Disposition'] = f"attachment; filename*=UTF-8''{quote(file_name)}"
-            return response
+        content_type = file_doc.get("file_type") or mimetypes.guess_type(file_name)[0] or "application/octet-stream"
+
+        f = open(file_path, "rb")
+        response = FileResponse(f, as_attachment=True, filename=file_name, content_type=content_type)
+        response["Content-Disposition"] = f"attachment; filename*=UTF-8''{quote(file_name)}"
+        return response
 
     except Exception as e:
         return JsonResponse({"success": False, "error": str(e)}, status=500)
