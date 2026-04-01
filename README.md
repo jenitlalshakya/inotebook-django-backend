@@ -34,7 +34,7 @@ This backend handles authentication, encrypted note storage, subscription manage
 | Database | MongoDB (via PyMongo 4.x) |
 | Authentication | PyJWT (HS256), Bcrypt |
 | Data validation | Pydantic v2 |
-| Encryption | `cryptography` (Fernet / symmetric) |
+| Encryption | `cryptography` (AES-GCM / symmetric) |
 | CORS | django-cors-headers |
 | Environment | python-dotenv |
 | Payment | eSewa ePay v2 (sandbox) |
@@ -204,6 +204,21 @@ Protected routes require the `Authorization: Bearer <token>` header.
 > **⚠️ Demo / Sandbox Only — No real money is charged.**  
 > Use [eSewa sandbox test credentials](https://developer.esewa.com.np/) during checkout.
 
+### 🧪 Sandbox Test Credentials
+eSewa Test Accounts:
+- 9806800001
+- 9806800002
+- 9806800003
+- 9806800004
+- 9806800005
+
+**Credentials for all sandbox accounts:**
+- Password: Nepal@123
+- MPIN: 1122
+- OTP: 123456
+
+> ⚠️ These credentials are for eSewa sandbox only. Do not use them for real transactions.
+
 ```
 Frontend  ──GET /api/subscription/payment/?plan=pro_monthly──▶  Backend
    ◀── renders subscription_form.html (auto-POST to eSewa sandbox)
@@ -285,7 +300,7 @@ MONGO_URI=mongodb+srv://<user>:<password>@<cluster>.mongodb.net/?retryWrites=tru
 # JWT & Security
 JWT_SECRET=your-jwt-secret
 PASSWORD_PEPPER=your-pepper-string
-ENCRYPTION_KEY=your-32-byte-fernet-key
+ENCRYPTION_KEY=your-AES-GCM-encryption-key
 
 # Frontend origin (for CORS and payment redirect)
 FRONTEND_URL=http://localhost:5173
@@ -295,10 +310,13 @@ ESEWA_SECRET_KEY=8gBm/:&EnhH.1/q   # default sandbox secret key
 ESEWA_PRODUCT_CODE=EPAYTEST         # default sandbox product code
 ```
 
-> **Tip:** Generate a valid Fernet key with:
+> **Tip:** Generate a valid AES-GCM (256-bit) key with:
 > ```python
-> from cryptography.fernet import Fernet
-> print(Fernet.generate_key().decode())
+> from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+> import base64
+>
+> key = AESGCM.generate_key(bit_length=256)
+> print(base64.b64encode(key).decode())
 > ```
 
 ---
@@ -329,7 +347,7 @@ http://127.0.0.1:8000
 | `MONGO_URI` | Yes | Full MongoDB connection string (SRV or standard) |
 | `JWT_SECRET` | Yes | Secret used to sign and verify JWT tokens |
 | `PASSWORD_PEPPER` | Yes | Server-side pepper appended to passwords before hashing |
-| `ENCRYPTION_KEY` | Yes | Fernet-compatible key for note field encryption |
+| `ENCRYPTION_KEY` | Yes | Base64-encoded 32-byte key for AES-GCM (AES-256) note encryption |
 | `FRONTEND_URL` | Yes | Frontend origin (e.g. `http://localhost:5173`); used for CORS and payment redirect |
 | `ESEWA_SECRET_KEY` | Yes | eSewa sandbox HMAC secret key |
 | `ESEWA_PRODUCT_CODE` | Yes | eSewa sandbox product code (`EPAYTEST` for sandbox) |
