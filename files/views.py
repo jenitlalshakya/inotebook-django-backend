@@ -1,15 +1,14 @@
-import os
 import re
 import mimetypes
 from datetime import datetime
-from django.http import JsonResponse, FileResponse
+from django.http import JsonResponse, StreamingHttpResponse
 from urllib.parse import quote
 from django.views.decorators.csrf import csrf_exempt
 from bson import ObjectId
-from core.mongo import files_collection, users_collection
+from core.mongo import files_collection, users_collection, fs
 from accounts.utils import jwt_required
-from django.conf import settings
 from subscription.views import PLANS
+
 
 @csrf_exempt
 @jwt_required
@@ -29,24 +28,20 @@ def upload_file(request):
         plan_config = PLANS.get(request.plan, PLANS["free"])
         max_storage_bytes = plan_config["storage_limit_bytes"]
         file_size = uploaded_file.size
-        
+
         if request.storage_used + file_size > max_storage_bytes:
             return JsonResponse({"success": False, "error": "Storage limit exceeded."}, status=403)
 
-        # Ensure media dir exists
-        user_dir = os.path.join(settings.MEDIA_ROOT, str(request.user_id))
-        os.makedirs(user_dir, exist_ok=True)
-        
-        # Sanitize filename (replace special chars with _)
+        # Sanitize filename
         safe_file_name = re.sub(r'[^a-zA-Z0-9_.-]', '_', uploaded_file.name)
-        file_path = os.path.join(user_dir, safe_file_name)
-        
-        # Save file
-        with open(file_path, "wb+") as f:
-            for chunk in uploaded_file.chunks():
-                f.write(chunk)
-                
-        file_url = f"{settings.MEDIA_URL}{request.user_id}/{safe_file_name}"
+
+        # Store file in GridFS
+        file_data = uploaded_file.read()
+        gridfs_id = fs.put(
+            file_data,
+            filename=safe_file_name,
+            content_type=uploaded_file.content_type or "application/octet-stream",
+        )
 
         # Save record in DB
         file_record = {
@@ -54,23 +49,26 @@ def upload_file(request):
             "file_name": safe_file_name,
             "file_size": file_size,
             "file_type": uploaded_file.content_type,
-            "file_url": file_url,
-            "created_at": datetime.utcnow()
+            "gridfs_id": gridfs_id,
+            "created_at": datetime.utcnow(),
         }
-        
-        # DB insert
+
         result = files_collection.insert_one(file_record)
 
         # Update user storage
         users_collection.update_one(
             {"_id": ObjectId(request.user_id)},
-            {"$inc": {"storage_used": file_size}}
+            {"$inc": {"storage_used": file_size}},
         )
 
-        return JsonResponse({"success": True, "file_id": str(result.inserted_id), "file_url": file_url}, status=201)
+        return JsonResponse(
+            {"success": True, "file_id": str(result.inserted_id)},
+            status=201,
+        )
 
     except Exception as e:
         return JsonResponse({"success": False, "error": str(e)}, status=500)
+
 
 @csrf_exempt
 @jwt_required
@@ -81,20 +79,20 @@ def list_files(request):
     try:
         files = files_collection.find({"user_id": ObjectId(request.user_id)}).sort("created_at", -1)
         file_list = []
-        for file in files:
+        for f in files:
             file_list.append({
-                "id": str(file["_id"]),
-                "file_name": file.get("file_name", ""),
-                "file_size": file.get("file_size", 0),
-                "file_type": file.get("file_type", ""),
-                "file_url": file.get("file_url", ""),
-                "created_at": file.get("created_at").isoformat() + "Z" if file.get("created_at") else ""
+                "id": str(f["_id"]),
+                "file_name": f.get("file_name", ""),
+                "file_size": f.get("file_size", 0),
+                "file_type": f.get("file_type", ""),
+                "created_at": f.get("created_at").isoformat() + "Z" if f.get("created_at") else "",
             })
 
         return JsonResponse({"success": True, "files": file_list}, status=200)
 
     except Exception as e:
         return JsonResponse({"success": False, "error": str(e)}, status=500)
+
 
 @csrf_exempt
 @jwt_required
@@ -103,25 +101,46 @@ def download_file(request, file_id):
         return JsonResponse({"success": False, "error": "Method not allowed"}, status=405)
 
     try:
-        file_doc = files_collection.find_one({"_id": ObjectId(file_id), "user_id": ObjectId(request.user_id)})
+        file_doc = files_collection.find_one(
+            {"_id": ObjectId(file_id), "user_id": ObjectId(request.user_id)}
+        )
         if not file_doc:
             return JsonResponse({"success": False, "error": "File not found"}, status=404)
 
+        gridfs_id = file_doc.get("gridfs_id")
+        if not gridfs_id:
+            return JsonResponse({"success": False, "error": "File not stored in GridFS"}, status=404)
+
+        try:
+            grid_file = fs.get(gridfs_id)
+        except Exception:
+            return JsonResponse({"success": False, "error": "File data not found in GridFS"}, status=404)
+
         file_name = file_doc.get("file_name")
-        file_path = os.path.join(settings.MEDIA_ROOT, str(request.user_id), file_name)
+        content_type = (
+            file_doc.get("file_type")
+            or mimetypes.guess_type(file_name)[0]
+            or "application/octet-stream"
+        )
 
-        if not os.path.exists(file_path):
-            return JsonResponse({"success": False, "error": "File missing from server"}, status=404)
+        def file_iterator():
+            try:
+                while True:
+                    chunk = grid_file.read(8192)
+                    if not chunk:
+                        break
+                    yield chunk
+            finally:
+                grid_file.close()
 
-        content_type = file_doc.get("file_type") or mimetypes.guess_type(file_name)[0] or "application/octet-stream"
-
-        f = open(file_path, "rb")
-        response = FileResponse(f, as_attachment=True, filename=file_name, content_type=content_type)
+        response = StreamingHttpResponse(file_iterator(), content_type=content_type)
         response["Content-Disposition"] = f"attachment; filename*=UTF-8''{quote(file_name)}"
+        response["Content-Length"] = grid_file.length
         return response
 
     except Exception as e:
         return JsonResponse({"success": False, "error": str(e)}, status=500)
+
 
 @csrf_exempt
 @jwt_required
@@ -130,22 +149,26 @@ def delete_file(request, file_id):
         return JsonResponse({"success": False, "error": "Method not allowed"}, status=405)
 
     try:
-        file_doc = files_collection.find_one({"_id": ObjectId(file_id), "user_id": ObjectId(request.user_id)})
-        
+        file_doc = files_collection.find_one(
+            {"_id": ObjectId(file_id), "user_id": ObjectId(request.user_id)}
+        )
+
         if not file_doc:
             return JsonResponse({"success": False, "error": "File not found"}, status=404)
 
-        # Delete from filesystem
-        file_name = file_doc.get("file_name")
-        file_path = os.path.join(settings.MEDIA_ROOT, str(request.user_id), file_name)
-        if os.path.exists(file_path):
-            os.remove(file_path)
+        # Delete from GridFS
+        gridfs_id = file_doc.get("gridfs_id")
+        if gridfs_id:
+            try:
+                fs.delete(gridfs_id)
+            except Exception:
+                pass
 
         # Reduce storage
         file_size = file_doc.get("file_size", 0)
         users_collection.update_one(
             {"_id": ObjectId(request.user_id)},
-            {"$inc": {"storage_used": -file_size}}
+            {"$inc": {"storage_used": -file_size}},
         )
 
         # Delete from DB
