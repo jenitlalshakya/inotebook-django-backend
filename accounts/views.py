@@ -4,7 +4,7 @@ from datetime import datetime, timedelta
 import bcrypt
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
-from core.mongo import users_collection, notes_collection
+from core.mongo import users_collection, notes_collection, files_collection
 from core.schema.User_Schema import UserSchema
 from django.conf import settings
 from pymongo.errors import DuplicateKeyError
@@ -104,6 +104,7 @@ def delete_account(request):
                 return JsonResponse({"success": False, "error": "User not found"}, status=404)
 
             notes_collection.delete_many({"user_id": ObjectId(user_id)})
+            files_collection.delete_many({"user_id": ObjectId(user_id)})
 
             return JsonResponse({"success": True, "message": "Account and all related data deleted successfully"}, status=200)
         except Exception as e:
